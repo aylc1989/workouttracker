@@ -1,4 +1,4 @@
-const CACHE_NAME = 'reach-v6';
+const CACHE_NAME = 'reach-v7';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

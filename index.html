@@ -10,6 +10,7 @@
 <link rel="manifest" href="manifest.json">
 <title>REACH — Workout Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -269,6 +270,19 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--bg)
 .backup-actions { display:flex; align-items:center; gap:8px; }
 .backup-btn { background:var(--yoga); border:none; color:var(--bg); padding:7px 14px; border-radius:8px; font-size:12px; font-weight:700; font-family:inherit; cursor:pointer; }
 .backup-dismiss { background:none; border:none; color:var(--text-dim); font-size:16px; cursor:pointer; padding:4px; }
+.backup-btn.drive { background:#4285f4; }
+.drive-section-title { font-size:10px; font-weight:700; letter-spacing:1.5px; color:var(--text-dim); padding:0 4px; margin-bottom:8px; margin-top:8px; display:flex; align-items:center; gap:8px; }
+.drive-section-title::after { content:''; flex:1; height:1px; background:var(--surface2); }
+.settings-btn .drive-icon { width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; }
+.drive-file-list { display:flex; flex-direction:column; gap:6px; max-height:50vh; overflow-y:auto; }
+.drive-file-item { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; background:var(--surface2); border:1px solid transparent; border-radius:12px; cursor:pointer; transition:all .2s; font-family:inherit; color:var(--text); text-align:left; width:100%; }
+.drive-file-item:active { transform:scale(.98); }
+.drive-file-item:hover { border-color:var(--accent); }
+.drive-file-name { font-size:13px; font-weight:600; }
+.drive-file-date { font-size:11px; color:var(--text-dim); }
+.drive-status { text-align:center; padding:20px; color:var(--text-dim); font-size:13px; }
+.drive-status .spinner { display:inline-block; width:20px; height:20px; border:2px solid var(--surface2); border-top-color:var(--accent); border-radius:50%; animation:spin .6s linear infinite; margin-bottom:8px; }
+@keyframes spin { to{transform:rotate(360deg)} }
 </style>
 </head>
 <body>
@@ -309,7 +323,8 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--bg)
           </div>
         </div>
         <div class="backup-actions">
-          <button class="backup-btn" onclick="quickBackup()">Backup</button>
+          <button class="backup-btn" onclick="quickBackup()">File</button>
+          <button class="backup-btn drive" onclick="backupToGoogleDrive()">Drive</button>
           <button class="backup-dismiss" onclick="dismissBackup()">✕</button>
         </div>
       </div>
@@ -458,6 +473,19 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--bg)
           <div><div class="settings-label">Import Data</div><div class="settings-sub">Restore from JSON backup</div></div>
         </button>
         <input type="file" id="importFile" accept=".json" style="display:none" onchange="handleImport(event)">
+      </div>
+      <div class="drive-section-title">GOOGLE DRIVE</div>
+      <div class="settings-group">
+        <button class="settings-btn" onclick="backupToGoogleDrive()">
+          <span class="settings-icon">☁️</span>
+          <div><div class="settings-label">Backup to Google Drive</div><div class="settings-sub" id="driveBackupSub">Save activities & PRs to your Drive</div></div>
+        </button>
+        <button class="settings-btn" onclick="restoreFromGoogleDrive()">
+          <span class="settings-icon">⬇️</span>
+          <div><div class="settings-label">Restore from Google Drive</div><div class="settings-sub">Pick a backup from your Drive</div></div>
+        </button>
+      </div>
+      <div class="settings-group">
         <button class="settings-btn danger" onclick="clearAllData()">
           <span class="settings-icon">🗑️</span>
           <div><div class="settings-label">Reset All Data</div><div class="settings-sub">Delete everything permanently</div></div>
@@ -580,6 +608,18 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--bg)
       </div>
     </div>
     <button class="btn-save" id="saveGoalBtn" onclick="saveGoal()" disabled>ADD GOAL ⚡</button>
+  </div>
+</div>
+
+<!-- GOOGLE DRIVE RESTORE MODAL -->
+<div class="modal-overlay" id="driveRestoreModal" onclick="if(event.target===this)closeDriveRestoreModal()">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">RESTORE FROM DRIVE</div>
+    <div class="modal-subtitle">Select a backup to restore</div>
+    <div id="driveRestoreContent">
+      <div class="drive-status"><div class="spinner"></div><br>Loading backups...</div>
+    </div>
   </div>
 </div>
 
@@ -1146,9 +1186,9 @@ function renderPRs(){
 }
 
 function exportToCalendar(){if(!data.activities.length){showToast('No activities to export');return}let ics='BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//REACH//Workout Tracker//EN\nCALSCALE:GREGORIAN\n';data.activities.forEach(a=>{const cats=getCats(a);const icons=cats.map(k=>(CATEGORIES[k]||CATEGORIES.other).icon).join('');const labels=cats.map(k=>(CATEGORIES[k]||CATEGORIES.other).label).join(', ');ics+=`BEGIN:VEVENT\nDTSTART;VALUE=DATE:${a.date.replace(/-/g,'')}\nDTEND;VALUE=DATE:${a.date.replace(/-/g,'')}\nSUMMARY:${icons} ${a.name} (${a.duration} min)\nDESCRIPTION:Category: ${labels}\\nDuration: ${a.duration} min\\nXP: ${a.xp}${a.notes?'\\nNotes: '+a.notes:''}\nUID:${a.id}@reach\nEND:VEVENT\n`});ics+='END:VCALENDAR';const b=new Blob([ics],{type:'text/calendar'});const u=URL.createObjectURL(b);const l=document.createElement('a');l.href=u;l.download='reach-workouts.ics';l.click();URL.revokeObjectURL(u);showToast('Calendar file downloaded!')}
-function exportData(){const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const l=document.createElement('a');l.href=u;l.download='reach-backup-'+toDateStr(new Date())+'.json';l.click();URL.revokeObjectURL(u);showToast('Data exported!')}
+function exportData(){const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const l=document.createElement('a');l.href=u;l.download='reach-backup-'+toDateStr(new Date())+'.json';l.click();URL.revokeObjectURL(u);markBackupDone('file');showToast('Data exported!')}
 function importData(){document.getElementById('importFile').click()}
-function handleImport(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=function(ev){try{const imp=JSON.parse(ev.target.result);if(imp.activities){data=imp;saveStore(data);renderRecent();renderStreakWeek();renderWeeklyGoals();showToast('Data imported!')}else showToast('Invalid file')}catch(err){showToast('Error reading file')}};r.readAsText(f);e.target.value=''}
+function handleImport(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=function(ev){try{const imp=JSON.parse(ev.target.result);if(imp.activities){data=imp;if(!data.personalBests)data.personalBests=[];saveStore(data);renderRecent();renderStreakWeek();renderWeeklyGoals();renderPRs();const prCount=(data.personalBests||[]).length;showToast('Imported '+data.activities.length+' activities'+(prCount?' & '+prCount+' PRs':'')+'!')}else showToast('Invalid file')}catch(err){showToast('Error reading file')}};r.readAsText(f);e.target.value=''}
 function clearAllData(){if(!confirm('Delete ALL data? Cannot be undone!'))return;data={activities:[],unlockedAchievements:[],bestStreak:0,customGoals:[],goalsSeeded:false};saveStore(data);renderRecent();renderStreakWeek();renderWeeklyGoals();showToast('All data cleared')}
 
 // ─── THEME ───
@@ -1203,22 +1243,25 @@ const BACKUP_KEY='reach_last_backup';
 
 // Auto-backup to a second localStorage key every time data is saved
 function autoBackup(){
-  if(!data.activities.length)return;
+  if(!data.activities.length&&!(data.personalBests||[]).length)return;
   try{localStorage.setItem('reach_backup_auto',JSON.stringify(data))}catch(e){}
 }
 autoBackup();
 
 // Restore from auto-backup if main data is empty but backup exists
 (function checkAutoRestore(){
-  if(data.activities.length===0){
+  if(data.activities.length===0&&!(data.personalBests||[]).length){
     try{
       const backup=localStorage.getItem('reach_backup_auto');
       if(backup){
         const parsed=JSON.parse(backup);
-        if(parsed.activities&&parsed.activities.length>0){
-          if(confirm('Found a backup with '+parsed.activities.length+' activities. Restore it?')){
-            data=parsed;saveStore(data);renderRecent();renderStreakWeek();renderWeeklyGoals();
-            showToast('Restored '+data.activities.length+' activities from backup!');
+        const acts=parsed.activities?parsed.activities.length:0;
+        const prs=parsed.personalBests?parsed.personalBests.length:0;
+        if(acts>0||prs>0){
+          const desc=acts+' activities'+(prs?' & '+prs+' PRs':'');
+          if(confirm('Found a backup with '+desc+'. Restore it?')){
+            data=parsed;saveStore(data);renderRecent();renderStreakWeek();renderWeeklyGoals();renderPRs();
+            showToast('Restored '+desc+' from backup!');
           }
         }
       }
@@ -1227,23 +1270,44 @@ autoBackup();
 })();
 
 // Check if we should show the backup reminder banner
+function backupSummary(){
+  const acts=data.activities.length;
+  const prs=(data.personalBests||[]).length;
+  let s=acts+' activit'+(acts===1?'y':'ies');
+  if(prs>0)s+=' & '+prs+' PR'+(prs===1?'':'s');
+  return s;
+}
+
 function checkBackupReminder(){
   const banner=document.getElementById('backupBanner');
-  if(!data.activities.length){banner.style.display='none';return}
+  if(!data.activities.length&&!(data.personalBests||[]).length){banner.style.display='none';return}
   const lb=localStorage.getItem(BACKUP_KEY);
   if(!lb){
-    document.getElementById('backupSub').textContent=data.activities.length+' activities — never backed up to file!';
+    document.getElementById('backupSub').textContent=backupSummary()+' — never backed up!';
     banner.style.display='flex';return;
   }
   try{
     const info=JSON.parse(lb);
-    const newSince=data.activities.length-(info.count||0);
+    const newActs=data.activities.length-(info.count||0);
+    const newPRs=(data.personalBests||[]).length-(info.prCount||0);
     const daysSince=Math.floor((Date.now()-new Date(info.time).getTime())/864e5);
-    if(newSince>=5||daysSince>=7){
-      document.getElementById('backupSub').textContent=newSince>0?newSince+' new activities since last backup':'Last backup '+daysSince+' days ago';
+    if(newActs>=5||newPRs>=2||daysSince>=7){
+      let msg='';
+      if(newActs>0||newPRs>0){
+        const parts=[];
+        if(newActs>0)parts.push(newActs+' new activit'+(newActs===1?'y':'ies'));
+        if(newPRs>0)parts.push(newPRs+' new PR'+(newPRs===1?'':'s'));
+        msg=parts.join(' & ')+' since last backup';
+      }else{msg='Last backup '+daysSince+' days ago'}
+      document.getElementById('backupSub').textContent=msg;
       banner.style.display='flex';
     }else{banner.style.display='none'}
   }catch(e){banner.style.display='flex'}
+}
+
+function markBackupDone(type){
+  localStorage.setItem(BACKUP_KEY,JSON.stringify({time:new Date().toISOString(),count:data.activities.length,prCount:(data.personalBests||[]).length,type:type||'file'}));
+  document.getElementById('backupBanner').style.display='none';
 }
 
 function quickBackup(){
@@ -1252,8 +1316,7 @@ function quickBackup(){
   const link=document.createElement('a');
   link.href=url;link.download='reach-backup-'+toDateStr(new Date())+'.json';link.click();
   URL.revokeObjectURL(url);
-  localStorage.setItem(BACKUP_KEY,JSON.stringify({time:new Date().toISOString(),count:data.activities.length}));
-  document.getElementById('backupBanner').style.display='none';
+  markBackupDone('file');
   showToast('✅ Backup saved! Keep the file safe.');
 }
 
@@ -1264,6 +1327,202 @@ checkBackupReminder();
 // Also auto-backup before every save
 const origSaveStore=saveStore;
 saveStore=function(d){origSaveStore(d);autoBackup()};
+
+// ─── GOOGLE DRIVE BACKUP ───
+// To enable: create a Google Cloud project, enable Drive API, create an OAuth 2.0 Client ID
+// (Web application type), add your domain as authorized JavaScript origin, and paste the client ID below.
+const GOOGLE_CLIENT_ID='';
+const DRIVE_SCOPES='https://www.googleapis.com/auth/drive.file';
+const DRIVE_FOLDER_NAME='REACH Backups';
+let driveAccessToken=null;
+let driveTokenClient=null;
+
+function isGoogleDriveAvailable(){
+  return GOOGLE_CLIENT_ID&&typeof google!=='undefined'&&google.accounts&&google.accounts.oauth2;
+}
+
+function requestDriveToken(){
+  return new Promise((resolve,reject)=>{
+    if(!isGoogleDriveAvailable()){
+      reject(new Error('not_configured'));return;
+    }
+    if(driveAccessToken){resolve(driveAccessToken);return}
+    try{
+      driveTokenClient=google.accounts.oauth2.initTokenClient({
+        client_id:GOOGLE_CLIENT_ID,
+        scope:DRIVE_SCOPES,
+        callback:resp=>{
+          if(resp.error){reject(resp);return}
+          driveAccessToken=resp.access_token;
+          setTimeout(()=>{driveAccessToken=null},resp.expires_in*1000-60000);
+          resolve(resp.access_token);
+        },
+        error_callback:err=>reject(err)
+      });
+      driveTokenClient.requestAccessToken();
+    }catch(e){reject(e)}
+  });
+}
+
+async function driveApiFetch(url,opts={}){
+  const token=driveAccessToken;
+  if(!opts.headers)opts.headers={};
+  opts.headers['Authorization']='Bearer '+token;
+  const res=await fetch(url,opts);
+  if(!res.ok){const err=await res.text();throw new Error(err)}
+  return res;
+}
+
+async function getOrCreateDriveFolder(){
+  const q=encodeURIComponent("name='"+DRIVE_FOLDER_NAME+"' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  const searchRes=await driveApiFetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name)');
+  const searchData=await searchRes.json();
+  if(searchData.files&&searchData.files.length>0)return searchData.files[0].id;
+  const createRes=await driveApiFetch('https://www.googleapis.com/drive/v3/files',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name:DRIVE_FOLDER_NAME,mimeType:'application/vnd.google-apps.folder'})
+  });
+  const folder=await createRes.json();
+  return folder.id;
+}
+
+async function backupToGoogleDrive(){
+  if(!isGoogleDriveAvailable()){
+    showToast('Google Drive not configured. See setup instructions.');return;
+  }
+  try{
+    showToast('Connecting to Google Drive...');
+    await requestDriveToken();
+    const folderId=await getOrCreateDriveFolder();
+    const fileName='reach-backup-'+toDateStr(new Date())+'.json';
+    const fileContent=JSON.stringify(data,null,2);
+
+    // Check if today's backup already exists (update it)
+    const q=encodeURIComponent("name='"+fileName+"' and '"+folderId+"' in parents and trashed=false");
+    const existRes=await driveApiFetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id)');
+    const existing=await existRes.json();
+
+    const metadata={name:fileName,mimeType:'application/json'};
+    let url,method;
+    if(existing.files&&existing.files.length>0){
+      url='https://www.googleapis.com/upload/drive/v3/files/'+existing.files[0].id+'?uploadType=multipart';
+      method='PATCH';
+    }else{
+      metadata.parents=[folderId];
+      url='https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+      method='POST';
+    }
+
+    const boundary='reach_backup_'+Date.now();
+    const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(metadata)+'\r\n--'+boundary+'\r\nContent-Type: application/json\r\n\r\n'+fileContent+'\r\n--'+boundary+'--';
+
+    await driveApiFetch(url,{
+      method:method,
+      headers:{'Content-Type':'multipart/related; boundary='+boundary},
+      body:body
+    });
+
+    markBackupDone('google-drive');
+    const prCount=(data.personalBests||[]).length;
+    showToast('Backed up to Google Drive! ('+data.activities.length+' activities'+(prCount?' & '+prCount+' PRs':'')+')');
+    updateDriveBackupSub();
+  }catch(err){
+    if(err.message==='not_configured'){showToast('Google Drive not configured');return}
+    console.error('Drive backup error:',err);
+    showToast('Backup failed. Please try again.');
+  }
+}
+
+async function restoreFromGoogleDrive(){
+  if(!isGoogleDriveAvailable()){
+    showToast('Google Drive not configured. See setup instructions.');return;
+  }
+  try{
+    const modal=document.getElementById('driveRestoreModal');
+    document.getElementById('driveRestoreContent').innerHTML='<div class="drive-status"><div class="spinner"></div><br>Connecting to Google Drive...</div>';
+    modal.classList.add('show');
+
+    await requestDriveToken();
+    const folderId=await getOrCreateDriveFolder();
+
+    const q=encodeURIComponent("'"+folderId+"' in parents and trashed=false and name contains 'reach-backup'");
+    const listRes=await driveApiFetch('https://www.googleapis.com/drive/v3/files?q='+q+'&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime,size)&pageSize=20');
+    const listData=await listRes.json();
+
+    if(!listData.files||listData.files.length===0){
+      document.getElementById('driveRestoreContent').innerHTML='<div class="drive-status">No backups found in Google Drive.<br><br>Back up your data first to see files here.</div>';
+      return;
+    }
+
+    const fileList=listData.files.map(f=>{
+      const date=new Date(f.modifiedTime).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      const size=f.size?(Math.round(parseInt(f.size)/1024)+'KB'):'';
+      return '<button class="drive-file-item" onclick="downloadDriveBackup(\''+f.id+'\')"><div><div class="drive-file-name">'+f.name+'</div><div class="drive-file-date">'+date+(size?' — '+size:'')+'</div></div></button>';
+    }).join('');
+
+    document.getElementById('driveRestoreContent').innerHTML='<div class="drive-file-list">'+fileList+'</div>';
+  }catch(err){
+    if(err.message==='not_configured'){
+      closeDriveRestoreModal();showToast('Google Drive not configured');return;
+    }
+    console.error('Drive restore error:',err);
+    document.getElementById('driveRestoreContent').innerHTML='<div class="drive-status">Could not connect to Google Drive.<br>Please try again.</div>';
+  }
+}
+
+function closeDriveRestoreModal(){document.getElementById('driveRestoreModal').classList.remove('show')}
+
+async function downloadDriveBackup(fileId){
+  try{
+    document.getElementById('driveRestoreContent').innerHTML='<div class="drive-status"><div class="spinner"></div><br>Downloading backup...</div>';
+    const res=await driveApiFetch('https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media');
+    const content=await res.json();
+
+    if(content.activities||content.personalBests){
+      const acts=content.activities?content.activities.length:0;
+      const prs=content.personalBests?content.personalBests.length:0;
+      const desc=acts+' activities'+(prs?' & '+prs+' PRs':'');
+      if(confirm('Restore this backup? It contains '+desc+'. This will replace your current data.')){
+        data=content;
+        if(!data.activities)data.activities=[];
+        if(!data.personalBests)data.personalBests=[];
+        if(!data.customGoals)data.customGoals=[];
+        if(!data.unlockedAchievements)data.unlockedAchievements=[];
+        saveStore(data);renderRecent();renderStreakWeek();renderWeeklyGoals();renderPRs();
+        closeDriveRestoreModal();
+        showToast('Restored '+desc+' from Google Drive!');
+      }else{
+        restoreFromGoogleDrive();
+      }
+    }else{
+      showToast('Invalid backup file');
+      restoreFromGoogleDrive();
+    }
+  }catch(err){
+    console.error('Drive download error:',err);
+    showToast('Failed to download backup. Try again.');
+    restoreFromGoogleDrive();
+  }
+}
+
+function updateDriveBackupSub(){
+  const sub=document.getElementById('driveBackupSub');
+  if(!sub)return;
+  const lb=localStorage.getItem(BACKUP_KEY);
+  if(lb){
+    try{
+      const info=JSON.parse(lb);
+      if(info.type==='google-drive'){
+        const d=new Date(info.time);
+        sub.textContent='Last backup: '+d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' — '+backupSummary();
+        return;
+      }
+    }catch(e){}
+  }
+  sub.textContent='Save activities & PRs to your Drive';
+}
+updateDriveBackupSub();
 
 // ─── SERVICE WORKER (auto-update, no cache clearing needed) ───
 if('serviceWorker' in navigator){

@@ -19,9 +19,6 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  // Don't intercept Google API or auth calls
-  if (url.hostname.includes('googleapis.com') || url.hostname.includes('accounts.google.com')) return;
-
   if (e.request.mode === 'navigate' || url.pathname.endsWith('.html')) {
     e.respondWith(
       fetch(e.request)

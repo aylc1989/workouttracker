@@ -10,7 +10,6 @@
 <link rel="manifest" href="manifest.json">
 <title>REACH — Workout Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -271,18 +270,6 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--bg)
 .backup-btn { background:var(--yoga); border:none; color:var(--bg); padding:7px 14px; border-radius:8px; font-size:12px; font-weight:700; font-family:inherit; cursor:pointer; }
 .backup-dismiss { background:none; border:none; color:var(--text-dim); font-size:16px; cursor:pointer; padding:4px; }
 .backup-btn.drive { background:#4285f4; }
-.drive-section-title { font-size:10px; font-weight:700; letter-spacing:1.5px; color:var(--text-dim); padding:0 4px; margin-bottom:8px; margin-top:8px; display:flex; align-items:center; gap:8px; }
-.drive-section-title::after { content:''; flex:1; height:1px; background:var(--surface2); }
-.settings-btn .drive-icon { width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; }
-.drive-file-list { display:flex; flex-direction:column; gap:6px; max-height:50vh; overflow-y:auto; }
-.drive-file-item { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; background:var(--surface2); border:1px solid transparent; border-radius:12px; cursor:pointer; transition:all .2s; font-family:inherit; color:var(--text); text-align:left; width:100%; }
-.drive-file-item:active { transform:scale(.98); }
-.drive-file-item:hover { border-color:var(--accent); }
-.drive-file-name { font-size:13px; font-weight:600; }
-.drive-file-date { font-size:11px; color:var(--text-dim); }
-.drive-status { text-align:center; padding:20px; color:var(--text-dim); font-size:13px; }
-.drive-status .spinner { display:inline-block; width:20px; height:20px; border:2px solid var(--surface2); border-top-color:var(--accent); border-radius:50%; animation:spin .6s linear infinite; margin-bottom:8px; }
-@keyframes spin { to{transform:rotate(360deg)} }
 </style>
 </head>
 <body>
@@ -324,7 +311,7 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--bg)
         </div>
         <div class="backup-actions">
           <button class="backup-btn" onclick="quickBackup()">File</button>
-          <button class="backup-btn drive" onclick="backupToGoogleDrive()">Drive</button>
+          <button class="backup-btn drive" id="bannerDriveBtn" style="display:none" onclick="shareBackupToDrive()">Drive</button>
           <button class="backup-dismiss" onclick="dismissBackup()">✕</button>
         </div>
       </div>
@@ -474,15 +461,10 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--bg)
         </button>
         <input type="file" id="importFile" accept=".json" style="display:none" onchange="handleImport(event)">
       </div>
-      <div class="drive-section-title">GOOGLE DRIVE</div>
-      <div class="settings-group">
-        <button class="settings-btn" onclick="backupToGoogleDrive()">
+      <div class="settings-group" id="driveGroup" style="display:none">
+        <button class="settings-btn" onclick="shareBackupToDrive()">
           <span class="settings-icon">☁️</span>
-          <div><div class="settings-label">Backup to Google Drive</div><div class="settings-sub" id="driveBackupSub">Save activities & PRs to your Drive</div></div>
-        </button>
-        <button class="settings-btn" onclick="restoreFromGoogleDrive()">
-          <span class="settings-icon">⬇️</span>
-          <div><div class="settings-label">Restore from Google Drive</div><div class="settings-sub">Pick a backup from your Drive</div></div>
+          <div><div class="settings-label">Save to Google Drive</div><div class="settings-sub">Share backup file to your Drive</div></div>
         </button>
       </div>
       <div class="settings-group">
@@ -608,18 +590,6 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--bg)
       </div>
     </div>
     <button class="btn-save" id="saveGoalBtn" onclick="saveGoal()" disabled>ADD GOAL ⚡</button>
-  </div>
-</div>
-
-<!-- GOOGLE DRIVE RESTORE MODAL -->
-<div class="modal-overlay" id="driveRestoreModal" onclick="if(event.target===this)closeDriveRestoreModal()">
-  <div class="modal">
-    <div class="modal-handle"></div>
-    <div class="modal-title">RESTORE FROM DRIVE</div>
-    <div class="modal-subtitle">Select a backup to restore</div>
-    <div id="driveRestoreContent">
-      <div class="drive-status"><div class="spinner"></div><br>Loading backups...</div>
-    </div>
   </div>
 </div>
 
@@ -1328,201 +1298,43 @@ checkBackupReminder();
 const origSaveStore=saveStore;
 saveStore=function(d){origSaveStore(d);autoBackup()};
 
-// ─── GOOGLE DRIVE BACKUP ───
-// To enable: create a Google Cloud project, enable Drive API, create an OAuth 2.0 Client ID
-// (Web application type), add your domain as authorized JavaScript origin, and paste the client ID below.
-const GOOGLE_CLIENT_ID='';
-const DRIVE_SCOPES='https://www.googleapis.com/auth/drive.file';
-const DRIVE_FOLDER_NAME='REACH Backups';
-let driveAccessToken=null;
-let driveTokenClient=null;
-
-function isGoogleDriveAvailable(){
-  return GOOGLE_CLIENT_ID&&typeof google!=='undefined'&&google.accounts&&google.accounts.oauth2;
-}
-
-function requestDriveToken(){
-  return new Promise((resolve,reject)=>{
-    if(!isGoogleDriveAvailable()){
-      reject(new Error('not_configured'));return;
-    }
-    if(driveAccessToken){resolve(driveAccessToken);return}
-    try{
-      driveTokenClient=google.accounts.oauth2.initTokenClient({
-        client_id:GOOGLE_CLIENT_ID,
-        scope:DRIVE_SCOPES,
-        callback:resp=>{
-          if(resp.error){reject(resp);return}
-          driveAccessToken=resp.access_token;
-          setTimeout(()=>{driveAccessToken=null},resp.expires_in*1000-60000);
-          resolve(resp.access_token);
-        },
-        error_callback:err=>reject(err)
-      });
-      driveTokenClient.requestAccessToken();
-    }catch(e){reject(e)}
-  });
-}
-
-async function driveApiFetch(url,opts={}){
-  const token=driveAccessToken;
-  if(!opts.headers)opts.headers={};
-  opts.headers['Authorization']='Bearer '+token;
-  const res=await fetch(url,opts);
-  if(!res.ok){const err=await res.text();throw new Error(err)}
-  return res;
-}
-
-async function getOrCreateDriveFolder(){
-  const q=encodeURIComponent("name='"+DRIVE_FOLDER_NAME+"' and mimeType='application/vnd.google-apps.folder' and trashed=false");
-  const searchRes=await driveApiFetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name)');
-  const searchData=await searchRes.json();
-  if(searchData.files&&searchData.files.length>0)return searchData.files[0].id;
-  const createRes=await driveApiFetch('https://www.googleapis.com/drive/v3/files',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({name:DRIVE_FOLDER_NAME,mimeType:'application/vnd.google-apps.folder'})
-  });
-  const folder=await createRes.json();
-  return folder.id;
-}
-
-async function backupToGoogleDrive(){
-  if(!isGoogleDriveAvailable()){
-    showToast('Google Drive not configured. See setup instructions.');return;
-  }
+// ─── SAVE TO GOOGLE DRIVE (native share) ───
+function canShareFiles(){
+  if(!navigator.canShare)return false;
   try{
-    showToast('Connecting to Google Drive...');
-    await requestDriveToken();
-    const folderId=await getOrCreateDriveFolder();
-    const fileName='reach-backup-'+toDateStr(new Date())+'.json';
-    const fileContent=JSON.stringify(data,null,2);
+    const testFile=new File(['test'],'test.json',{type:'application/json'});
+    return navigator.canShare({files:[testFile]});
+  }catch(e){return false}
+}
 
-    // Check if today's backup already exists (update it)
-    const q=encodeURIComponent("name='"+fileName+"' and '"+folderId+"' in parents and trashed=false");
-    const existRes=await driveApiFetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id)');
-    const existing=await existRes.json();
-
-    const metadata={name:fileName,mimeType:'application/json'};
-    let url,method;
-    if(existing.files&&existing.files.length>0){
-      url='https://www.googleapis.com/upload/drive/v3/files/'+existing.files[0].id+'?uploadType=multipart';
-      method='PATCH';
-    }else{
-      metadata.parents=[folderId];
-      url='https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
-      method='POST';
-    }
-
-    const boundary='reach_backup_'+Date.now();
-    const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(metadata)+'\r\n--'+boundary+'\r\nContent-Type: application/json\r\n\r\n'+fileContent+'\r\n--'+boundary+'--';
-
-    await driveApiFetch(url,{
-      method:method,
-      headers:{'Content-Type':'multipart/related; boundary='+boundary},
-      body:body
+async function shareBackupToDrive(){
+  const fileName='reach-backup-'+toDateStr(new Date())+'.json';
+  const fileContent=JSON.stringify(data,null,2);
+  const file=new File([fileContent],fileName,{type:'application/json'});
+  try{
+    await navigator.share({
+      title:'REACH Backup',
+      text:backupSummary(),
+      files:[file]
     });
-
-    markBackupDone('google-drive');
-    const prCount=(data.personalBests||[]).length;
-    showToast('Backed up to Google Drive! ('+data.activities.length+' activities'+(prCount?' & '+prCount+' PRs':'')+')');
-    updateDriveBackupSub();
+    markBackupDone('drive');
+    showToast('Backup shared! Save it to Google Drive.');
   }catch(err){
-    if(err.message==='not_configured'){showToast('Google Drive not configured');return}
-    console.error('Drive backup error:',err);
-    showToast('Backup failed. Please try again.');
-  }
-}
-
-async function restoreFromGoogleDrive(){
-  if(!isGoogleDriveAvailable()){
-    showToast('Google Drive not configured. See setup instructions.');return;
-  }
-  try{
-    const modal=document.getElementById('driveRestoreModal');
-    document.getElementById('driveRestoreContent').innerHTML='<div class="drive-status"><div class="spinner"></div><br>Connecting to Google Drive...</div>';
-    modal.classList.add('show');
-
-    await requestDriveToken();
-    const folderId=await getOrCreateDriveFolder();
-
-    const q=encodeURIComponent("'"+folderId+"' in parents and trashed=false and name contains 'reach-backup'");
-    const listRes=await driveApiFetch('https://www.googleapis.com/drive/v3/files?q='+q+'&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime,size)&pageSize=20');
-    const listData=await listRes.json();
-
-    if(!listData.files||listData.files.length===0){
-      document.getElementById('driveRestoreContent').innerHTML='<div class="drive-status">No backups found in Google Drive.<br><br>Back up your data first to see files here.</div>';
-      return;
+    if(err.name!=='AbortError'){
+      showToast('Sharing failed. Try the file export instead.');
     }
-
-    const fileList=listData.files.map(f=>{
-      const date=new Date(f.modifiedTime).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
-      const size=f.size?(Math.round(parseInt(f.size)/1024)+'KB'):'';
-      return '<button class="drive-file-item" onclick="downloadDriveBackup(\''+f.id+'\')"><div><div class="drive-file-name">'+f.name+'</div><div class="drive-file-date">'+date+(size?' — '+size:'')+'</div></div></button>';
-    }).join('');
-
-    document.getElementById('driveRestoreContent').innerHTML='<div class="drive-file-list">'+fileList+'</div>';
-  }catch(err){
-    if(err.message==='not_configured'){
-      closeDriveRestoreModal();showToast('Google Drive not configured');return;
-    }
-    console.error('Drive restore error:',err);
-    document.getElementById('driveRestoreContent').innerHTML='<div class="drive-status">Could not connect to Google Drive.<br>Please try again.</div>';
   }
 }
 
-function closeDriveRestoreModal(){document.getElementById('driveRestoreModal').classList.remove('show')}
-
-async function downloadDriveBackup(fileId){
-  try{
-    document.getElementById('driveRestoreContent').innerHTML='<div class="drive-status"><div class="spinner"></div><br>Downloading backup...</div>';
-    const res=await driveApiFetch('https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media');
-    const content=await res.json();
-
-    if(content.activities||content.personalBests){
-      const acts=content.activities?content.activities.length:0;
-      const prs=content.personalBests?content.personalBests.length:0;
-      const desc=acts+' activities'+(prs?' & '+prs+' PRs':'');
-      if(confirm('Restore this backup? It contains '+desc+'. This will replace your current data.')){
-        data=content;
-        if(!data.activities)data.activities=[];
-        if(!data.personalBests)data.personalBests=[];
-        if(!data.customGoals)data.customGoals=[];
-        if(!data.unlockedAchievements)data.unlockedAchievements=[];
-        saveStore(data);renderRecent();renderStreakWeek();renderWeeklyGoals();renderPRs();
-        closeDriveRestoreModal();
-        showToast('Restored '+desc+' from Google Drive!');
-      }else{
-        restoreFromGoogleDrive();
-      }
-    }else{
-      showToast('Invalid backup file');
-      restoreFromGoogleDrive();
-    }
-  }catch(err){
-    console.error('Drive download error:',err);
-    showToast('Failed to download backup. Try again.');
-    restoreFromGoogleDrive();
+// Show Drive buttons only when the device supports file sharing
+(function(){
+  if(canShareFiles()){
+    const g=document.getElementById('driveGroup');
+    if(g)g.style.display='';
+    const b=document.getElementById('bannerDriveBtn');
+    if(b)b.style.display='';
   }
-}
-
-function updateDriveBackupSub(){
-  const sub=document.getElementById('driveBackupSub');
-  if(!sub)return;
-  const lb=localStorage.getItem(BACKUP_KEY);
-  if(lb){
-    try{
-      const info=JSON.parse(lb);
-      if(info.type==='google-drive'){
-        const d=new Date(info.time);
-        sub.textContent='Last backup: '+d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' — '+backupSummary();
-        return;
-      }
-    }catch(e){}
-  }
-  sub.textContent='Save activities & PRs to your Drive';
-}
-updateDriveBackupSub();
+})();
 
 // ─── SERVICE WORKER (auto-update, no cache clearing needed) ───
 if('serviceWorker' in navigator){

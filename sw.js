@@ -1,4 +1,4 @@
-const CACHE_NAME = 'reach-v7';
+const CACHE_NAME = 'reach-v8';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
@@ -21,7 +21,7 @@ self.addEventListener('fetch', e => {
 
   if (e.request.mode === 'navigate' || url.pathname.endsWith('.html')) {
     e.respondWith(
-      fetch(e.request)
+      fetch(e.request, { cache: 'no-store' })
         .then(response => {
           const clone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
@@ -34,7 +34,7 @@ self.addEventListener('fetch', e => {
 
   if (url.pathname.endsWith('.json') || url.pathname.endsWith('.js')) {
     e.respondWith(
-      fetch(e.request)
+      fetch(e.request, { cache: 'no-store' })
         .then(response => {
           const clone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));

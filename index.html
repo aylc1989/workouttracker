@@ -471,7 +471,7 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--bg)
       <div class="settings-group" id="driveGroup" style="display:none">
         <button class="settings-btn" onclick="shareBackupToDrive()">
           <span class="settings-icon">☁️</span>
-          <div><div class="settings-label">Save to Google Drive</div><div class="settings-sub">Share backup file to your Drive</div></div>
+          <div><div class="settings-label">Save to Google Drive</div><div class="settings-sub">Share to Drive, or download the backup file</div></div>
         </button>
       </div>
       <div class="settings-group">
@@ -1312,41 +1312,57 @@ const origSaveStore=saveStore;
 saveStore=function(d){origSaveStore(d);autoBackup()};
 
 // ─── SAVE TO GOOGLE DRIVE (native share) ───
-function canShareFiles(){
-  if(!navigator.canShare)return false;
-  try{
-    const testFile=new File(['test'],'test.json',{type:'application/json'});
-    return navigator.canShare({files:[testFile]});
-  }catch(e){return false}
+// Some Android builds (e.g. Samsung Galaxy S24) reject the application/json
+// MIME type in navigator.canShare, so try a couple of MIME types and fall
+// back to a plain file download that the user can move into Drive.
+function buildBackupFile(mime){
+  const fileName='reach-backup-'+toDateStr(new Date())+'.json';
+  return new File([JSON.stringify(data,null,2)],fileName,{type:mime});
+}
+function shareableBackupFile(){
+  if(!navigator.canShare)return null;
+  for(const mime of ['application/json','text/plain','']){
+    try{
+      const file=buildBackupFile(mime);
+      if(navigator.canShare({files:[file]}))return file;
+    }catch(e){}
+  }
+  return null;
+}
+function downloadBackupFile(){
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const link=document.createElement('a');
+  link.href=url;link.download='reach-backup-'+toDateStr(new Date())+'.json';link.click();
+  URL.revokeObjectURL(url);
 }
 
 async function shareBackupToDrive(){
-  const fileName='reach-backup-'+toDateStr(new Date())+'.json';
-  const fileContent=JSON.stringify(data,null,2);
-  const file=new File([fileContent],fileName,{type:'application/json'});
-  try{
-    await navigator.share({
-      title:'REACH Backup',
-      text:backupSummary(),
-      files:[file]
-    });
-    markBackupDone('drive');
-    showToast('Backup shared! Save it to Google Drive.');
-  }catch(err){
-    if(err.name!=='AbortError'){
-      showToast('Sharing failed. Try the file export instead.');
+  const file=shareableBackupFile();
+  if(file&&navigator.share){
+    try{
+      await navigator.share({title:'REACH Backup',text:backupSummary(),files:[file]});
+      markBackupDone('drive');
+      showToast('Backup shared! Pick Drive to save it.');
+      return;
+    }catch(err){
+      if(err.name==='AbortError')return;
+      // Sharing not permitted/failed — fall through to download.
     }
   }
+  // Fallback: download the file so the user can save it to Drive manually.
+  downloadBackupFile();
+  markBackupDone('file');
+  showToast('Backup downloaded — open it from Drive to save it there.');
 }
 
-// Show Drive buttons only when the device supports file sharing
+// The Drive/Save button works on any device: it shares when possible and
+// downloads otherwise, so show it whenever sharing or downloading is available.
 (function(){
-  if(canShareFiles()){
-    const g=document.getElementById('driveGroup');
-    if(g)g.style.display='';
-    const b=document.getElementById('bannerDriveBtn');
-    if(b)b.style.display='';
-  }
+  const g=document.getElementById('driveGroup');
+  if(g)g.style.display='';
+  const b=document.getElementById('bannerDriveBtn');
+  if(b)b.style.display='';
 })();
 
 // ─── SERVICE WORKER (auto-update, no cache clearing needed) ───

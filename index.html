@@ -183,9 +183,11 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--bg)
 .form-input:focus,.form-textarea:focus { border-color:var(--accent); }
 .form-textarea { resize:none; min-height:44px; }
 .duration-scroll-wrap { position:relative; }
-.duration-scroll-wrap::before,.duration-scroll-wrap::after { content:''; position:absolute; top:0; bottom:0; width:20px; z-index:1; pointer-events:none; }
+.duration-scroll-wrap::before,.duration-scroll-wrap::after { content:''; position:absolute; top:0; bottom:0; width:20px; z-index:1; pointer-events:none; opacity:1; transition:opacity .15s ease; }
 .duration-scroll-wrap::before { left:0; background:linear-gradient(to right,var(--surface),transparent); }
 .duration-scroll-wrap::after { right:0; background:linear-gradient(to left,var(--surface),transparent); }
+.duration-scroll-wrap.at-start::before { opacity:0; }
+.duration-scroll-wrap.at-end::after { opacity:0; }
 .duration-picker { display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; scroll-snap-type:x proximity; padding:2px 0; }
 .duration-picker::-webkit-scrollbar { display:none; }
 .dur-chip { background:var(--surface2); border:2px solid transparent; border-radius:20px; padding:8px 14px; font-size:13px; font-weight:600; color:var(--text); cursor:pointer; font-family:inherit; transition:all .2s; white-space:nowrap; flex-shrink:0; scroll-snap-align:center; }
@@ -516,8 +518,8 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--bg)
     <div class="selected-cats-info" id="selectedCatsInfo"></div>
     <div class="form-group"><label class="form-label">Activity Name</label><input type="text" class="form-input" id="activityName" placeholder="e.g. Morning Run, Bench Press..."></div>
     <div class="form-group"><label class="form-label">Duration</label>
-      <div class="duration-scroll-wrap">
-        <div class="duration-picker">
+      <div class="duration-scroll-wrap at-start" id="durWrap">
+        <div class="duration-picker" id="durPicker" onscroll="updateDurFades()">
           <button class="dur-chip" onclick="selectDuration(this,15)">15m</button>
           <button class="dur-chip" onclick="selectDuration(this,30)">30m</button>
           <button class="dur-chip" onclick="selectDuration(this,45)">45m</button>
@@ -824,6 +826,8 @@ function openLogModal(dateStr,cat){
   document.querySelector('.modal-title').textContent='LOG ACTIVITY';
   document.querySelector('.modal-subtitle').textContent='Select one or more categories';
   updateCatInfo();
+  const durPicker=document.getElementById('durPicker');if(durPicker)durPicker.scrollLeft=0;
+  requestAnimationFrame(updateDurFades);
   if(cat){const btn=document.querySelector(`.modal-cat[data-cat="${cat}"]`);if(btn)toggleCat(btn)}
 }
 function editActivity(id){
@@ -860,6 +864,9 @@ function editActivity(id){
   document.querySelector('.modal-title').textContent='EDIT ACTIVITY';
   document.querySelector('.modal-subtitle').textContent='Change any details below';
   updateCatInfo();
+  const selChip=document.querySelector('.dur-chip.selected');
+  if(selChip)selChip.scrollIntoView({block:'nearest',inline:'center'});
+  requestAnimationFrame(updateDurFades);
 }
 function closeLogModal(instant){
   const overlay=document.getElementById('logModal');
@@ -934,6 +941,7 @@ function closeLogModal(instant){
 function toggleCat(el){const cat=el.dataset.cat;if(el.classList.contains('selected')){el.classList.remove('selected');selectedCats=selectedCats.filter(c=>c!==cat)}else{el.classList.add('selected');selectedCats.push(cat)}updateCatInfo();validateForm()}
 function updateCatInfo(){const info=document.getElementById('selectedCatsInfo');if(selectedCats.length>1){const lb=selectedCats.map(c=>CATEGORIES[c].label).join(' + ');info.textContent=`📋 ${lb}`;info.classList.add('show')}else{info.classList.remove('show')}}
 function selectDuration(el,mins){document.querySelectorAll('.dur-chip').forEach(c=>c.classList.remove('selected'));el.classList.add('selected');selectedDuration=mins;updateCatInfo();validateForm()}
+function updateDurFades(){const p=document.getElementById('durPicker');const w=document.getElementById('durWrap');if(!p||!w)return;const max=p.scrollWidth-p.clientWidth;w.classList.toggle('at-start',p.scrollLeft<=1);w.classList.toggle('at-end',p.scrollLeft>=max-1)}
 function validateForm(){document.getElementById('saveBtn').disabled=!(selectedCats.length>0&&selectedDuration)}
 
 function saveActivity(){if(!selectedCats.length||!selectedDuration)return;
